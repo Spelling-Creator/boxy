@@ -6,10 +6,10 @@
 
 ```sh
 # Install dependencies
-npm install
+pnpm install
 
 # Run the bot
-npm start
+pnpm start
 ```
 
 ## Docker

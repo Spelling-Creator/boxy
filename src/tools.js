@@ -40,7 +40,7 @@ const executeCommandDeclaration = {
     properties: {
       command: {
         type: Type.STRING,
-        description: "The full bash command string to execute (e.g. 'ls -la', 'npm test', 'cat file.txt | grep foo'). Bash-only syntax is fine."
+        description: "The full bash command string to execute (e.g. 'ls -la', 'pnpm test', 'cat file.txt | grep foo'). Bash-only syntax is fine."
       }
     },
     required: ["command"],
