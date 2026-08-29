@@ -76,7 +76,7 @@ describe("My Probot app", () => {
       .query({ per_page: "600" })
       .reply(200, [])
       .post("/repos/hiimbex/testing-things/discussions/comments/101/replies", (body) => {
-        assert.ok(body.body.includes("@OmniBlocks/boxy") || body.body.length > 0);
+        assert.ok(body.body.includes("@Spelling-Creator/boxy") || body.body.length > 0);
         return true;
       })
       .reply(200);

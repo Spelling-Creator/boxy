@@ -2,9 +2,9 @@
   "name": "boxy",
   "version": "1.0.0",
   "private": true,
-  "description": "our assistant for our omniblocks repo",
-  "author": "supervoidcoder",
-  "license": "ISC",
+  "description": "Our assistant for our Spelling Creator repos",
+  "author": "supervoidcoder, maintained by the Spelling Creator authors",
+  "license": "GPL-3.0",
   "homepage": "https://github.com//",
   "keywords": [
     "probot",
