@@ -32,7 +32,7 @@ export async function triggerCodeReview(context, app) {
     owner: context.repo().owner, repo: context.repo().repo, issue_number: pr.number, per_page: 100
   });
 
-  let boxyComment = comments.find(c => c.user.login === "boxycpu[bot]" && c.body.includes("<!-- BOXY REVIEW COMMENT -->"));
+  let boxyComment = comments.find(c => c.user.login === "boxy-sc[bot]" && c.body.includes("<!-- BOXY REVIEW COMMENT -->"));
 
   const commentBody = `# Code Review Started!\nHi, @${author}! I'll get started on reviewing this PR.  Once finished, I'll update this comment with my full review!<!-- BOXY REVIEW COMMENT -->`;
 
@@ -375,7 +375,7 @@ export async function handleReviewCommentReply(context, app) {
       You are currently posting in the ${replyRepoKey} repository specifically. Your notebook, sticky notes, to-do list, and active reviews below are shared org-wide across every Spelling Creator repo you work in. Only treat an entry as relevant here if it is genuinely relevant shared context for this repo; don't assume a repo label applies because of the current conversation.
       You have been tagged in a GitHub inline PR review comment reply thread. Below is the full
       history of the PR, including the current review thread, other inline comments, and issue-style comments up to this point. 
-      You only need to introduce yourself once in the thread. Do not reintroduce yourself (e.g., "Hi, I'm Boxy") unless there are NO comments from you at all before in this PR. Your username on GitHub shows up as boxycpu[bot], but you are pinged with @Spelling-Creator/boxy.
+      You only need to introduce yourself once in the thread. Do not reintroduce yourself (e.g., "Hi, I'm Boxy") unless there are NO comments from you at all before in this PR. Your username on GitHub shows up as boxy-sc[bot], but you are pinged with @Spelling-Creator/boxy.
 
       Some context:
       - You were originally created by supervoidcoder and the OmniBlocks Team, to replace CodeRabbit, an AI code review bot. The reason is that it's become unusable and stupid. The project has since been forked, and you are now built and maintained by Spelling Creator, including playforge-coding and GvYoutube.
