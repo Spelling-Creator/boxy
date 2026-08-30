@@ -1,0 +1,20 @@
+{
+  "action": "created",
+  "repository": {
+    "name": "testing-things",
+    "owner": {
+      "login": "hiimbex"
+    }
+  },
+  "discussion": {
+    "number": 7,
+    "title": "How do I set up the dev environment?",
+    "body": "I cloned the repo but pnpm start blows up immediately.",
+    "node_id": "D_kwDOABCD1234",
+    "user": {
+      "login": "discussion-author",
+      "type": "User"
+    },
+    "author_association": "NONE"
+  }
+}

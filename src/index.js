@@ -150,13 +150,13 @@ async function listConversationComments(octokit, { owner, repo, isDiscussion, di
 
 async function createCommentForContext(context, body) {
   const repo = context.repo();
-  if (context.name === "discussion_comment") {
+  if (context.name === "discussion_comment" || context.name === "discussion") {
     return await replyToDiscussionComment(context.octokit, {
       owner: repo.owner,
       repo: repo.repo,
-      discussion_comment_id: context.payload.comment.id,
-      discussion_comment_node_id: context.payload.comment.node_id,
-      discussion_node_id: context.payload.discussion?.node_id || context.payload.comment.node_id,
+      discussion_comment_id: context.payload.comment?.id,
+      discussion_comment_node_id: context.payload.comment?.node_id,
+      discussion_node_id: context.payload.discussion?.node_id || context.payload.comment?.node_id,
       body
     });
   }
@@ -344,30 +344,34 @@ async function reactToUserComment(context, app, reaction) {
 async function boxyCommentorIssue(context, app, startCodeReview) {
   app.log.info("working...");
 
-  const isDiscussion = context.name === "discussion_comment";
+  const isDiscussionComment = context.name === "discussion_comment";
+  const isDiscussionCreated = context.name === "discussion";
+  const isDiscussion = isDiscussionComment || isDiscussionCreated;
   const isPullRequest = !!context.payload.issue?.pull_request;
   const isIssueComment = context.name === "issue_comment";
-  const isComment = isIssueComment || isDiscussion;
+  const isComment = isIssueComment || isDiscussionComment;
   const { owner: currentOwner, repo: currentRepo } = context.repo();
   
   const mentionHandles = ["@Spelling-Creator/boxy", "@Boxy-SC", `@${currentOwner}/boxy`, "@boxy-sc"];
   // i'm NOT  refactoring the code to loop through mentionhandles every time lol
   
 
+  const thread = isDiscussionCreated ? context.payload.discussion : context.payload.issue;
+
   const author = isComment
     ? context.payload.comment.user.login
-    : context.payload.issue.user.login;
+    : thread.user.login;
   const authorType = isComment
     ? context.payload.comment.user.type
-    : context.payload.issue.user.type;
+    : thread.user.type;
 
   const authorRole = isComment
     ? context.payload.comment.author_association
-    : context.payload.issue.author_association;
+    : thread.author_association;
 
   const textBody = isComment
     ? context.payload.comment.body
-    : context.payload.issue.body || "";
+    : thread.body || "";
 
   const lowerBody = textBody.toLowerCase();
   const stripPunctuation = (text) => text.replace(/[.,#!$%\^&\*;:{}=\-_`~?]/g, "").trim();
@@ -397,9 +401,9 @@ async function boxyCommentorIssue(context, app, startCodeReview) {
       return await replyToDiscussionComment(context.octokit, {
         owner: repo.owner,
         repo: repo.repo,
-        discussion_comment_id: context.payload.comment.id,
-        discussion_comment_node_id: context.payload.comment.node_id,
-        discussion_node_id: context.payload.discussion?.node_id || context.payload.comment.node_id,
+        discussion_comment_id: context.payload.comment?.id,
+        discussion_comment_node_id: context.payload.comment?.node_id,
+        discussion_node_id: context.payload.discussion?.node_id || context.payload.comment?.node_id,
         body: "Yeah?"
       });
     }
@@ -413,7 +417,6 @@ async function boxyCommentorIssue(context, app, startCodeReview) {
   }
 
     try {
-      const isDiscussion = context.name === "discussion_comment";
       const issue = isDiscussion ? context.payload.discussion : context.payload.issue;
       const issueNum = issue.number;
       const issueBody = isDiscussion
@@ -445,7 +448,7 @@ async function boxyCommentorIssue(context, app, startCodeReview) {
       if (isComment) {
         sayThingyThingy = `in a new comment on this ${isDiscussion ? "discussion" : "issue"}`;
       } else {
-        sayThingyThingy = `in a new created issue (which means you need to triage it)`;
+        sayThingyThingy = `in a newly created ${isDiscussionCreated ? "discussion" : "issue"} (which means you need to triage it)`;
       }
 
       conversationHistory += `\n Triggered by: ${author} repo role: (${authorRole}) ${sayThingyThingy}.\n\n`;
@@ -668,13 +671,13 @@ let loopCount = 0;
       app.log.info(response.text);
 
       const repo = context.repo();
-      if (context.name === "discussion_comment") {
+      if (isDiscussion) {
         return await replyToDiscussionComment(context.octokit, {
           owner: repo.owner,
           repo: repo.repo,
-          discussion_comment_id: context.payload.comment.id,
-          discussion_comment_node_id: context.payload.comment.node_id,
-          discussion_node_id: context.payload.discussion?.node_id || context.payload.comment.node_id,
+          discussion_comment_id: context.payload.comment?.id,
+          discussion_comment_node_id: context.payload.comment?.node_id,
+          discussion_node_id: context.payload.discussion?.node_id || context.payload.comment?.node_id,
           body: responseText
         });
       }
@@ -770,7 +773,7 @@ export default (app) => {
     }
   }
 
-  app.on(["issue_comment.created", "discussion_comment.created", "issues.opened"], async (context) => {
+  app.on(["issue_comment.created", "discussion_comment.created", "issues.opened", "discussion.created"], async (context) => {
     boxyCommentorIssue(context, app, startCodeReview);
     return;
   });
