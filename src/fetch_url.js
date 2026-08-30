@@ -1,6 +1,8 @@
 import dns from "node:dns/promises";
 import net from "node:net";
 
+import { hasFirecrawl, firecrawlScrape } from "./firecrawl.js";
+
 export const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 export const MAX_MARKDOWN_CHARS = 25000;
 const MAX_REDIRECTS = 5;
@@ -63,29 +65,36 @@ export function isPrivateAddress(address) {
   return false;
 }
 
+export class UrlNotAllowedError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "UrlNotAllowedError";
+  }
+}
+
 async function assertFetchable(target) {
   let url;
   try {
     url = new URL(target);
   } catch {
-    throw new Error(`'${target}' is not a valid URL.`);
+    throw new UrlNotAllowedError(`'${target}' is not a valid URL.`);
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error(`Only http and https URLs can be fetched, not '${url.protocol}'.`);
+    throw new UrlNotAllowedError(`Only http and https URLs can be fetched, not '${url.protocol}'.`);
   }
   if (url.username || url.password) {
-    throw new Error("URLs with embedded credentials are not fetched.");
+    throw new UrlNotAllowedError("URLs with embedded credentials are not fetched.");
   }
 
   let addresses;
   try {
     addresses = await dns.lookup(url.hostname, { all: true });
   } catch (err) {
-    throw new Error(`Could not resolve '${url.hostname}': ${err.message}`);
+    throw new UrlNotAllowedError(`Could not resolve '${url.hostname}': ${err.message}`);
   }
   if (addresses.some(({ address }) => isPrivateAddress(address))) {
-    throw new Error(`'${url.hostname}' resolves to a private or local address, which is not fetchable.`);
+    throw new UrlNotAllowedError(`'${url.hostname}' resolves to a private or local address, which is not fetchable.`);
   }
 
   return url;
@@ -517,6 +526,34 @@ function capMarkdown(text) {
   };
 }
 
+async function scrapeWithFirecrawl(url, extra = {}) {
+  if (!hasFirecrawl()) return null;
+
+  let scraped;
+  try {
+    scraped = await firecrawlScrape(url);
+  } catch {
+    return null;
+  }
+
+  const { content, truncated } = capMarkdown(scraped.markdown);
+  const mediaType = scraped.contentType || "text/html";
+  const format = mediaType === "text/html" || mediaType === "application/xhtml+xml"
+    ? "html"
+    : mediaType.split("/")[1] || "html";
+
+  return {
+    url: scraped.url,
+    ...extra,
+    content_type: mediaType,
+    format,
+    ...(scraped.title && { title: scraped.title }),
+    markdown: content,
+    truncated,
+    via: "firecrawl",
+  };
+}
+
 export async function fetchUrl(target) {
   if (!target || typeof target !== "string") {
     return { error: "No URL was given to fetch." };
@@ -525,16 +562,25 @@ export async function fetchUrl(target) {
   const normalized = normalizeUrl(target);
   const rewritten = normalized !== String(target).trim();
 
+  const rewriteNote = rewritten
+    ? { requested_url: String(target).trim(), note: "GitHub blob URL was rewritten to its raw URL." }
+    : {};
+
   let response;
   let finalUrl;
   try {
     ({ response, finalUrl } = await fetchFollowingRedirects(normalized));
   } catch (err) {
+    if (err instanceof UrlNotAllowedError) return { error: `Could not fetch ${normalized}: ${err.message}` };
+    const scraped = await scrapeWithFirecrawl(normalized, rewriteNote);
+    if (scraped) return scraped;
     return { error: `Could not fetch ${normalized}: ${err.message}` };
   }
 
   if (!response.ok) {
     await response.body?.cancel().catch(() => {});
+    const scraped = await scrapeWithFirecrawl(normalized, rewriteNote);
+    if (scraped) return scraped;
     return {
       error: `${normalized} responded with ${response.status} ${response.statusText || ""}`.trim(),
       status: response.status,
@@ -550,13 +596,17 @@ export async function fetchUrl(target) {
     return { error: `Could not read the response from ${normalized}: ${err.message}` };
   }
 
-  if (bytes.length === 0) return { error: `${normalized} returned an empty response.` };
+  if (bytes.length === 0) {
+    const scraped = await scrapeWithFirecrawl(normalized, rewriteNote);
+    if (scraped) return scraped;
+    return { error: `${normalized} returned an empty response.` };
+  }
 
   const contentType = response.headers.get("content-type") || "";
   const mediaType = contentType.split(";")[0].trim().toLowerCase();
   const base = {
     url: finalUrl,
-    ...(rewritten && { requested_url: String(target).trim(), note: "GitHub blob URL was rewritten to its raw URL." }),
+    ...rewriteNote,
     content_type: mediaType || "unknown",
   };
 
@@ -602,7 +652,11 @@ export async function fetchUrl(target) {
 
   if (looksHtml || (!mediaType && /^\s*(<!doctype html|<html)/i.test(text))) {
     const { title, markdown } = htmlToMarkdown(text, finalUrl);
-    if (!markdown) return { ...base, format: "html", title, error: `No readable text could be extracted from ${finalUrl}.` };
+    if (!markdown) {
+      const scraped = await scrapeWithFirecrawl(finalUrl, rewriteNote);
+      if (scraped) return scraped;
+      return { ...base, format: "html", title, error: `No readable text could be extracted from ${finalUrl}.` };
+    }
     const { content, truncated } = capMarkdown(markdown);
     return { ...base, format: "html", ...(title && { title }), markdown: content, truncated: truncated || sizeTruncated };
   }
