@@ -8,7 +8,14 @@ export function firecrawlApiBase() {
 }
 
 export function hasFirecrawl() {
-  return Boolean(process.env.FIRECRAWL_API_KEY || process.env.FIRECRAWL_API_URL);
+  const apiKey = process.env.FIRECRAWL_API_KEY?.trim();
+  const apiUrl = process.env.FIRECRAWL_API_URL?.trim();
+  try {
+    const { protocol } = new URL(apiUrl);
+    return Boolean(apiKey || (apiUrl && (protocol === "http:" || protocol === "https:")));
+  } catch {
+    return Boolean(apiKey);
+  }
 }
 
 async function callFirecrawl(path, body) {
