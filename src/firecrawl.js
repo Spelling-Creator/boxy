@@ -1,6 +1,7 @@
 const DEFAULT_API_URL = "https://api.firecrawl.dev";
 const SCRAPE_TIMEOUT_MS = 30000;
 const REQUEST_TIMEOUT_MS = 45000;
+const SEARCH_QUERY_MAX_LENGTH = 500;
 
 export function firecrawlApiBase() {
   const raw = (process.env.FIRECRAWL_API_URL || DEFAULT_API_URL).trim().replace(/\/+$/, "");
@@ -71,6 +72,10 @@ export async function firecrawlScrape(url) {
 }
 
 export async function firecrawlSearch(query, limit = 6) {
+  if (typeof query !== "string" || query.length > SEARCH_QUERY_MAX_LENGTH) {
+    throw new Error(`Firecrawl search queries must be at most ${SEARCH_QUERY_MAX_LENGTH} characters.`);
+  }
+
   const data = await callFirecrawl("/search", {
     query,
     limit,

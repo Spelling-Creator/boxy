@@ -1,7 +1,7 @@
 import { describe, test, beforeEach } from "node:test";
 import assert from "node:assert";
 
-import { firecrawlApiBase, hasFirecrawl } from "../src/firecrawl.js";
+import { firecrawlApiBase, firecrawlSearch, hasFirecrawl } from "../src/firecrawl.js";
 import { fetchUrl } from "../src/fetch_url.js";
 import { webSearch } from "../src/tools.js";
 
@@ -35,6 +35,27 @@ describe("hasFirecrawl", () => {
   test("a self-hosted URL is enough, since those often need no key", () => {
     process.env.FIRECRAWL_API_URL = "http://localhost:3002";
     assert.equal(hasFirecrawl(), true);
+  });
+});
+
+describe("firecrawlSearch", () => {
+  test("rejects a 501-character query before making a request", async () => {
+    const originalFetch = globalThis.fetch;
+    let fetchCalled = false;
+    globalThis.fetch = async () => {
+      fetchCalled = true;
+      throw new Error("fetch should not be called");
+    };
+
+    try {
+      await assert.rejects(
+        firecrawlSearch("x".repeat(501)),
+        /at most 500 characters/,
+      );
+      assert.equal(fetchCalled, false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 
