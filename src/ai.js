@@ -145,6 +145,79 @@ export function formatGoogleCommentText(parts, elapsedSeconds) {
 
   return answerText ? `${details}\n\n${answerText}` : details;
 }
+
+export function extractGroundingSources(candidate) {
+  const grounding = candidate && candidate.groundingMetadata;
+  const chunks = (grounding && grounding.groundingChunks) || [];
+  const sources = [];
+
+  for (const chunk of chunks) {
+    const web = chunk && (chunk.web || chunk.retrievedContext);
+    if (!web || !web.uri) {
+      continue;
+    }
+    sources.push({
+      uri: web.uri,
+      title: String(web.title || web.domain || web.uri).trim()
+    });
+  }
+
+  return { sources, queries: ((grounding && grounding.webSearchQueries) || []).filter(Boolean) };
+}
+
+const conversationGrounding = new WeakMap();
+
+function trackGroundingSources(contents, candidate) {
+  const turn = extractGroundingSources(candidate);
+  if (!Array.isArray(contents)) {
+    return turn;
+  }
+
+  let state = conversationGrounding.get(contents);
+  if (!state) {
+    state = { sources: [], queries: [], seen: new Set() };
+    conversationGrounding.set(contents, state);
+  }
+
+  for (const source of turn.sources) {
+    if (state.seen.has(source.uri)) {
+      continue;
+    }
+    state.seen.add(source.uri);
+    state.sources.push(source);
+  }
+  for (const query of turn.queries) {
+    if (!state.queries.includes(query)) {
+      state.queries.push(query);
+    }
+  }
+
+  return state;
+}
+
+export function formatGroundingSources({ sources = [], queries = [] } = {}) {
+  const seen = new Set();
+  const lines = [];
+
+  for (const source of sources) {
+    if (!source || !source.uri || seen.has(source.uri)) {
+      continue;
+    }
+    seen.add(source.uri);
+    const title = String(source.title || source.uri).replace(/\[/g, "(").replace(/\]/g, ")");
+    lines.push(`- [${title}](${source.uri})`);
+  }
+
+  if (lines.length === 0) {
+    return "";
+  }
+
+  const queryLine = queries.length > 0
+    ? `Searched for: ${queries.map(q => `\`${q}\``).join(", ")}\n\n`
+    : "";
+
+  return `<details>\n<summary>🔎 Sources (${lines.length})</summary>\n\n${queryLine}${lines.join("\n")}\n\n</details>`;
+}
 const REASONING_DETAILS_BLOCK = /^<details>\s*<summary>[^<]*Thought for [^<]*<\/summary>[\s\S]*?<\/details>\s*/;
 
 /**
@@ -258,7 +331,7 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
           ? [{ functionDeclarations: tools }] 
           : [];
 
-        if (!provider.model.startsWith("gemini-3")) {
+        if (provider.model.startsWith("gemini")) {
           toolList.push({ codeExecution: {} });
           toolList.push({ googleSearch: {} });
         }
@@ -399,7 +472,12 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
         }
 
         const elapsedSeconds = getElapsedSeconds(startTime);
-        const formattedText = appendModelIdentification(formatGoogleCommentText(parts, elapsedSeconds), provider.model, response.usageMetadata);
+        const groundingSources = formatGroundingSources(trackGroundingSources(contents, response.candidates?.[0]));
+        const commentBody = [formatGoogleCommentText(parts, elapsedSeconds), extraText, groundingSources]
+          .map(chunk => (chunk || "").trim())
+          .filter(Boolean)
+          .join("\n\n");
+        const formattedText = appendModelIdentification(commentBody, provider.model, response.usageMetadata);
 
         return {
           functionCalls,
