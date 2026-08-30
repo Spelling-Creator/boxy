@@ -369,15 +369,18 @@ async function boxyCommentorIssue(context, app, startCodeReview) {
     ? context.payload.comment.body
     : context.payload.issue.body || "";
 
-  let mentionHandle = mentionHandles.find(item => textBody.includes(item)) || process.env.BOXY_MENTION_HANDLE || "@Spelling-Creator/boxy";
+  const lowerBody = textBody.toLowerCase();
+  const stripPunctuation = (text) => text.replace(/[.,#!$%\^&\*;:{}=\-_`~?]/g, "").trim();
+
+  let mentionHandle = mentionHandles.find(item => lowerBody.includes(item.toLowerCase())) || process.env.BOXY_MENTION_HANDLE || "@Spelling-Creator/boxy";
 
   if (authorType === "Bot" || author.includes("[bot]")) {
     return;
   }
 
-  if (!textBody.includes(mentionHandle) && isComment) return;
+  if (!lowerBody.includes(mentionHandle.toLowerCase()) && isComment) return;
 
-  if (textBody.trim() === `${mentionHandle} review` && isPullRequest) {
+  if (textBody.trim().toLowerCase() === `${mentionHandle} review`.toLowerCase() && isPullRequest) {
     // Asynchronicity is beautiful, isn't it?
     return await Promise.all([
       startCodeReview(context, app),
@@ -386,8 +389,9 @@ async function boxyCommentorIssue(context, app, startCodeReview) {
   
   }
 
-  const cleanedComment = textBody.replace(/[.,#!$%\^&\*;:{}=\-_`~?]/g, "").trim();
-  if (cleanedComment === mentionHandle) {
+  // strip the punctuation off the handle too, otherwise the dash in "boxy-sc" means this never matches
+  const cleanedComment = stripPunctuation(textBody).toLowerCase();
+  if (cleanedComment === stripPunctuation(mentionHandle).toLowerCase()) {
     const repo = context.repo();
     if (isDiscussion) {
       return await replyToDiscussionComment(context.octokit, {
