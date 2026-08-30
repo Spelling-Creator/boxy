@@ -689,18 +689,18 @@ let loopCount = 0;
       try {
         // some models keep throwing giant errors that end up destroying boxy's context window
         const errorlog = String(error.stack || error.message).substring(0, 30000);
-      return await createCommentForContext(context, "i broke 💔💔💔 error <details><summary>Error Details</summary><pre>" + errorlog + "</pre></details>");
+      return await createCommentForContext(context, "boxy broke. error. :( <details><summary>Error Details</summary><pre>" + errorlog + "</pre></details>");
       } catch (err) {
         try {
         const spicyErrorbutItsTruncated = String(error.stack || error.message).substring(0, 60000);
-        return await createCommentForContext(context, "# I broke SO BAD that posting the comment to post about the error also errored 💔🥀 <details><summary>Error Details</summary><pre>" + (err.stack || err.message) + "</pre><details><summary>extra error details 🌶️</summary><pre>" + spicyErrorbutItsTruncated + "</pre></details></details>");
+        return await createCommentForContext(context, "# boxy pretty much died and couldn't even post the error message post. <details><summary>Error Details</summary><pre>" + (err.stack || err.message) + "</pre><details><summary>extra error details 🌶️</summary><pre>" + spicyErrorbutItsTruncated + "</pre></details></details>");
         } catch (err2) {
           console.error(err2)
           app.log.error("something is fricking broke ", err2.message);
           await new Promise(resolve => setTimeout(resolve, 5000));
           // just in case stupid github is rate limitiinnig us
           try {
-          return await createCommentForContext(context, "i broke SO BAD THAT POSTING THE COMMENT TO POST ABOUT THE ERROR ABOUT THE COMMENT THAT WAS ABOUT THE ERROR ALSO ERRORED 💔🥀💔🥀💔🥀💔🥀💔🥀💔🥀💔🥀💔🥀💔🥀💔🥀💔🥀💔🥀💔🥀<details><summary>Error Details</summary><pre> lol screw error details something is clearly wrong so bad that including the error details in the comment breaks lol :trollface: go fix this or skill issue</pre></details>");
+          return await createCommentForContext(context, "# The old Error Narrator got too much tired of errorception that they had to hire a new one. <details><summary>Error Details</summary><pre> lol screw error details something is clearly wrong so bad that including the error details in the comment breaks lol :trollface: go fix this or skill issue</pre></details>");
           
           } catch (err3) {
             app.log.error("something is LITERALLY broke ", err3.message);
