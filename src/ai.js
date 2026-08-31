@@ -98,14 +98,45 @@ export function expandProviderAttempts(providers) {
   }));
 
   const rounds = withCredentials.reduce((max, entry) => Math.max(max, entry.credentials.length), 0);
-  const attempts = [];
+
+  const queues = [];
+  const queueByType = new Map();
 
   for (let round = 0; round < rounds; round++) {
     for (const { provider, credentials } of withCredentials) {
-      if (credentials[round]) {
-        attempts.push({ ...provider, credential: credentials[round] });
+      if (!credentials[round]) {
+        continue;
       }
+      let queue = queueByType.get(provider.type);
+      if (!queue) {
+        queue = { type: provider.type, items: [], taken: 0 };
+        queueByType.set(provider.type, queue);
+        queues.push(queue);
+      }
+      queue.items.push({ ...provider, credential: credentials[round] });
     }
+  }
+  
+  const attempts = [];
+  let previousType = null;
+
+  while (true) {
+    const remaining = queues.filter(queue => queue.taken < queue.items.length);
+    if (remaining.length === 0) {
+      break;
+    }
+
+    const eligible = remaining.length > 1
+      ? remaining.filter(queue => queue.type !== previousType)
+      : remaining;
+
+    const next = eligible.reduce((best, queue) => (
+      queue.taken / queue.items.length < best.taken / best.items.length ? queue : best
+    ));
+
+    attempts.push(next.items[next.taken]);
+    next.taken++;
+    previousType = next.type;
   }
 
   return attempts;
@@ -377,7 +408,7 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
 
   const bigBrainProviders = [
     { name: "gemini-3.5-flash-lite", type: "google", model: "gemini-3.5-flash-lite" },
-    { name: "gemini-3.1-flash-lite", type: "google", model: "gemini-3.5-flash-lite" },
+    { name: "gemini-3.1-flash-lite", type: "google", model: "gemini-3.1-flash-lite" },
     { name: "mistral-large", type: "mistral", model: "mistral-large-latest" },
     { name: "gemma-4-31b-it", type: "google", model: "gemma-4-31b-it" },
     { name: "gemini-3.6-flash", type: "google", model: "gemini-3.6-flash" },
