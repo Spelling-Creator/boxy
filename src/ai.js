@@ -30,6 +30,11 @@ export function filterProviders(providers, { enabled, disabled } = {}) {
   });
 }
 
+export function ollamaApiBase() {
+  const base = (process.env.OLLAMA_API_URL || "https://ollama.com").trim().replace(/\/+$/, "");
+  return /\/v\d+$/.test(base) ? base : `${base}/v1`;
+}
+
 /**
  * Converts Boxy's tools to OpenAI format.
  * @param {object[]} tools - The available tools in Gemini format.
@@ -273,6 +278,10 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
     { name: "pollinations-step-flash-3.5", type: "pollinations", model: "Spit-fires/step-3.5-flash-free" },
     { name: "groq-gpt-oss-120b", type: "groq", model: "openai/gpt-oss-120b", useBackup: false },
     { name: "groq-gpt-oss-20b", type: "groq", model: "openai/gpt-oss-20b", useBackup: false },
+    { name: "ollama-gpt-oss-120b", type: "ollama", model: "gpt-oss:120b" },
+    { name: "ollama-glm-5.3-flash", type: "ollama", model: "glm-5.3-flash" },
+    { name: "ollama-deepseek-v4-flash", type: "ollama", model: "deepseek-v4-flash:0731" },
+    { name: "ollama-qwen-3.5-397b", type: "ollama", model: "qwen3.5:397b" },
     /*{ name: "openrouter-nemotron-3-super", type: "openrouter", model: "nvidia/nemotron-3-super-120b-a12b:free" },
     { name: "openrouter-qwen-coder", type: "openrouter", model: "qwen/qwen3-coder:free" },
     { name: "openrouter-gemma-4-31b-a4b-it", type: "openrouter", model: "google/gemma-4-31b-it:free" },*/
@@ -293,7 +302,9 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
     { name: "gemini-3.6-flash", type: "google", model: "gemini-3.6-flash", useBackup: false },
     { name: "gemini-3.5-flash-lite-backup", type: "google", model: "gemini-3.5-flash-lite", useBackup: true },
     { name: "gemma-4-31b-it-backup", type: "google", model: "gemma-4-31b-it", useBackup: true },
-    { name: "gemini-3.6-flash-backup", type: "google", model: "gemini-3.6-flash", useBackup: true }
+    { name: "gemini-3.6-flash-backup", type: "google", model: "gemini-3.6-flash", useBackup: true },
+    { name: "ollama-deepseek-v4-pro", type: "ollama", model: "deepseek-v4-pro:0813" },
+    { name: "ollama-kimi-k3", type: "ollama", model: "kimi-k3" }
 
   ];
   
@@ -1261,6 +1272,102 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
           text: textWithHeader
         };
       }
+
+      if (provider.type === "ollama") {
+        if (!process.env.OLLAMA_API_KEY) {
+          continue;
+        }
+
+        const messages = convertContentsToMessages(contents);
+        const body = {
+          model: provider.model,
+          messages: messages,
+          max_tokens: provider.maxTokens || 8192,
+          stream: false
+        };
+
+        if (tools && tools.length > 0) {
+          body.tools = reformatToolSchema(tools);
+          body.tool_choice = "auto";
+        }
+
+        const headers = {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${process.env.OLLAMA_API_KEY}`
+        };
+
+        const res = await fetch(`${ollamaApiBase()}/chat/completions`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body)
+        });
+
+        if (!res.ok) {
+          throw new Error(`Ollama Status ${res.status}: ${await res.text()}`);
+        }
+
+        const data = await res.json();
+        const choice = data.choices?.[0];
+        const message = choice?.message;
+
+        if (!message) {
+          throw new Error("Empty choice content received from Ollama");
+        }
+
+        const text = message.content || "";
+        const reasoning = message.reasoning_content || message.reasoning || null;
+        const functionCalls = [];
+        const parts = [];
+
+        if (message.tool_calls && message.tool_calls.length > 0) {
+          for (const tc of message.tool_calls) {
+            if (tc.function) {
+              let parsedArgs = {};
+              try {
+                parsedArgs = typeof tc.function.arguments === "string"
+                  ? JSON.parse(tc.function.arguments)
+                  : tc.function.arguments;
+              } catch (e) {
+                parsedArgs = tc.function.arguments;
+              }
+              const fc = {
+                name: tc.function.name,
+                args: parsedArgs,
+                id: tc.id
+              };
+              functionCalls.push(fc);
+              parts.push({ functionCall: fc });
+            }
+          }
+        } else {
+          parts.push({ text });
+        }
+
+        if (functionCalls.length === 0) {
+          throwIfEmptyModelResponse(text, `Ollama provider ${provider.name}`);
+        }
+
+        const elapsedSeconds = getElapsedSeconds(startTime);
+        const formattedText = appendModelIdentification(sanitizeModelCommentText(text, elapsedSeconds, reasoning), provider.model, data.usage);
+        const contextParts = parts.map(part => (
+          part.text ? { ...part, text: stripReasoningArtifacts(part.text) } : part
+        ));
+
+        return {
+          functionCalls,
+          candidates: [
+            {
+              content: {
+                role: "model",
+                parts: contextParts
+              },
+              finishReason: choice.finish_reason === "stop" ? "STOP" : (choice.finish_reason === "tool_calls" ? "STOP" : choice.finish_reason)
+            }
+          ],
+          text: formattedText
+        };
+      }
+
     } catch (err) {
       if (appLog) {
         appLog.warn(`Provider ${provider.name} failed. Error: ${err.message}`);
