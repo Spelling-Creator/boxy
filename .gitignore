@@ -6,7 +6,7 @@ pnpm-debug.log
 !mock-cert.pem
 .env
 coverage
-lib
+/lib
 
 boxy_notebook.json
 boxy_reviews.json

@@ -12,7 +12,11 @@
     "probot-app"
   ],
   "scripts": {
-    "start": "probot run ./src/index.js",
+    "start": "node scripts/start.js",
+    "start:bot": "probot run ./src/index.js",
+    "dashboard": "pnpm --filter dashboard dev",
+    "dashboard:build": "pnpm --filter dashboard build",
+    "dashboard:start": "pnpm --filter dashboard start",
     "test": "node --test"
   },
   "dependencies": {
