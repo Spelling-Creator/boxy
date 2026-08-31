@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import dotenv from "dotenv";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -8,9 +8,16 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DASHBOARD_DIR = path.join(ROOT, "dashboard");
 const DASHBOARD_ENTRY = path.join(DASHBOARD_DIR, "build", "index.js");
 
-const DASHBOARD_PORT = process.env.DASHBOARD_PORT || "3001";
-const DASHBOARD_HOST = process.env.DASHBOARD_HOST || "127.0.0.1";
-const DASHBOARD_ENABLED = process.env.DASHBOARD_ENABLED !== "false";
+dotenv.config({ path: path.join(ROOT, ".env") });
+
+function setting(name) {
+  const value = process.env[name]?.trim();
+  return value ? value : undefined;
+}
+
+const DASHBOARD_PORT = setting("DASHBOARD_PORT") || "3001";
+const DASHBOARD_HOST = setting("DASHBOARD_HOST") || "127.0.0.1";
+const DASHBOARD_ENABLED = setting("DASHBOARD_ENABLED") !== "false";
 
 const isWindows = process.platform === "win32";
 const binary = (name) => path.join(ROOT, "node_modules", ".bin", isWindows ? `${name}.cmd` : name);
