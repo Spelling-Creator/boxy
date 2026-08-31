@@ -51,13 +51,11 @@ describe("ollamaApiBase", () => {
   });
 
   test("appends /v1 to a self-hosted URL and drops trailing slashes", () => {
-    process.env.OLLAMA_API_URL = "http://localhost:11434/";
-    assert.equal(ollamaApiBase(), "http://localhost:11434/v1");
+    assert.equal(ollamaApiBase("http://localhost:11434/"), "http://localhost:11434/v1");
   });
 
   test("leaves a URL that already names a version alone", () => {
-    process.env.OLLAMA_API_URL = "https://ollama.internal/v1";
-    assert.equal(ollamaApiBase(), "https://ollama.internal/v1");
+    assert.equal(ollamaApiBase("https://ollama.internal/v1"), "https://ollama.internal/v1");
   });
 });
 

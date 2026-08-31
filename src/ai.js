@@ -30,8 +30,94 @@ export function filterProviders(providers, { enabled, disabled } = {}) {
   });
 }
 
-export function ollamaApiBase() {
-  const base = (process.env.OLLAMA_API_URL || "https://ollama.com").trim().replace(/\/+$/, "");
+const PROVIDER_ENV_PREFIX = {
+  google: "GEMINI",
+  cerebras: "CEREBRAS",
+  groq: "GROQ",
+  cohere: "COHERE",
+  mistral: "MISTRAL",
+  openrouter: "OPENROUTER",
+  hyperbolic: "HYPERBOLIC",
+  siliconflow: "SILICONFLOW",
+  novita: "NOVITA",
+  pollinations: "POLLINATIONS",
+  ollama: "OLLAMA"
+};
+
+export function readKeyedEnvList(base) {
+  const pattern = new RegExp(`^${base}(?:_(\\d+))?$`);
+  const found = [];
+
+  for (const [name, raw] of Object.entries(process.env)) {
+    const match = pattern.exec(name);
+    if (match) {
+      found.push({ order: match[1] ? Number(match[1]) : 1, raw });
+    }
+  }
+
+  found.sort((a, b) => a.order - b.order);
+
+  const values = [];
+  for (const { raw } of found) {
+    for (const part of String(raw || "").split(",")) {
+      const value = part.trim();
+      if (value && !values.includes(value)) {
+        values.push(value);
+      }
+    }
+  }
+
+  return values;
+}
+
+export function providerCredentials(type) {
+  const prefix = PROVIDER_ENV_PREFIX[type];
+  if (!prefix) {
+    return [];
+  }
+
+  const keys = readKeyedEnvList(`${prefix}_API_KEY`);
+  const urls = readKeyedEnvList(`${prefix}_API_URL`);
+  const count = Math.max(keys.length, urls.length);
+  const credentials = [];
+
+  for (let i = 0; i < count; i++) {
+    const apiKey = keys[i] || keys[0];
+    if (apiKey) {
+      credentials.push({ apiKey, baseUrl: urls[i] || urls[0] || null });
+    }
+  }
+
+  return credentials.map((credential, i) => ({ ...credential, index: i + 1, total: credentials.length }));
+}
+
+export function expandProviderAttempts(providers) {
+  const withCredentials = (providers || []).map(provider => ({
+    provider,
+    credentials: providerCredentials(provider.type)
+  }));
+
+  const rounds = withCredentials.reduce((max, entry) => Math.max(max, entry.credentials.length), 0);
+  const attempts = [];
+
+  for (let round = 0; round < rounds; round++) {
+    for (const { provider, credentials } of withCredentials) {
+      if (credentials[round]) {
+        attempts.push({ ...provider, credential: credentials[round] });
+      }
+    }
+  }
+
+  return attempts;
+}
+
+function describeAttempt(attempt) {
+  const { index, total } = attempt.credential;
+  return total > 1 ? `${attempt.name} (key ${index}/${total})` : attempt.name;
+}
+
+export function ollamaApiBase(baseUrl) {
+  const base = (baseUrl || "https://ollama.com").trim().replace(/\/+$/, "");
   return /\/v\d+$/.test(base) ? base : `${base}/v1`;
 }
 
@@ -254,20 +340,16 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
   // needs big brain is optional param for when stronk models for thinking reviews or smth
 
   const providers = [    
-    { name: "gemini-3.5-flash-lite", type: "google", model: "gemini-3.5-flash-lite", useBackup: false },
-    { name: "gemini-3.1-flash-lite", type: "google", model: "gemini-3.1-flash-lite", useBackup: false },
+    { name: "gemini-3.5-flash-lite", type: "google", model: "gemini-3.5-flash-lite" },
+    { name: "gemini-3.1-flash-lite", type: "google", model: "gemini-3.1-flash-lite" },
     { name: "novita-macaron-v1-tall", type: "novita", model: "mindai/macaron-v1-tall" },
     { name: "novita-deepseek-v3.1", type: "novita", model: "deepseek/deepseek-v3.1" },
     { name: "novita-glm-4.5", type: "novita", model: "zai-org/glm-4.5" },
     { name: "novita-llama-3.3-70b", type: "novita", model: "meta-llama/llama-3.3-70b-instruct" },
-    { name: "gemini-3.5-flash", type: "google", model: "gemini-3.5-flash", useBackup: false },
-    { name: "gemma-4-26b-a4b-it", type: "google", model: "gemma-4-26b-a4b-it", useBackup: false },
-    { name: "gemma-4-31b-it", type: "google", model: "gemma-4-31b-it", useBackup: false },
-    { name: "gemini-3.1-flash-lite-backup", type: "google", model: "gemini-3.1-flash-lite", useBackup: true },
-    { name: "gemini-3.5-flash-backup", type: "google", model: "gemini-3.5-flash", useBackup: true },
-    { name: "gemma-4-26b-a4b-it-backup", type: "google", model: "gemma-4-26b-a4b-it", useBackup: true },
-    { name: "gemma-4-31b-it-backup", type: "google", model: "gemma-4-31b-it", useBackup: true },
-    { name: "mistral-large", type: "mistral", model: "mistral-large-latest", useBackup: false },
+    { name: "gemini-3.5-flash", type: "google", model: "gemini-3.5-flash" },
+    { name: "gemma-4-26b-a4b-it", type: "google", model: "gemma-4-26b-a4b-it" },
+    { name: "gemma-4-31b-it", type: "google", model: "gemma-4-31b-it" },
+    { name: "mistral-large", type: "mistral", model: "mistral-large-latest" },
     { name: "pollinations-ultra-fast-gemma", type: "pollinations", model: "tomdacatto/gemma-4-31b-fast" },
     { name: "pollinations-agnes-1.5-flash", type: "pollinations", model: "Catniti/agnes-1.5-flash" },
     { name: "pollinations-minimax-m3-31b", type: "pollinations", model: "sharktide/inferenceport-ai-minimax-m3" },
@@ -276,8 +358,8 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
     { name: "pollinations-kimi-k2.7-code", type: "pollinations", model: "sharktide/inferenceport-ai-kimi-k2.7-code" },    
     { name: "pollinations-kimi-2.5", type: "pollinations", model: "sharktide/inferenceport-ai-kimi-k2.5" },
     { name: "pollinations-step-flash-3.5", type: "pollinations", model: "Spit-fires/step-3.5-flash-free" },
-    { name: "groq-gpt-oss-120b", type: "groq", model: "openai/gpt-oss-120b", useBackup: false },
-    { name: "groq-gpt-oss-20b", type: "groq", model: "openai/gpt-oss-20b", useBackup: false },
+    { name: "groq-gpt-oss-120b", type: "groq", model: "openai/gpt-oss-120b" },
+    { name: "groq-gpt-oss-20b", type: "groq", model: "openai/gpt-oss-20b" },
     { name: "ollama-gpt-oss-120b", type: "ollama", model: "gpt-oss:120b" },
     { name: "ollama-glm-5.3-flash", type: "ollama", model: "glm-5.3-flash" },
     { name: "ollama-deepseek-v4-flash", type: "ollama", model: "deepseek-v4-flash:0731" },
@@ -288,24 +370,19 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
     { name: "pollinations-gemma-slightly-more-expensive", type: "pollinations", model: "MarcosFRG/gemma-4-31b" },
     { name: "cerebras-gemma-4-31b", type: "cerebras", model: "gemma-4-31b" },
     { name: "pollinations-kimi-k3", type: "pollinations", model: "vendouple/kimi-k3" },
-    { name: "command-a-plus-05-2026", type: "cohere", model: "command-a-plus-05-2026", useBackup: false },
+    { name: "command-a-plus-05-2026", type: "cohere", model: "command-a-plus-05-2026" },
     //{ name: "hyperbolic-llama-3.3-70b", type: "hyperbolic", model: "meta-llama/Llama-3.3-70B-Instruct" },
     //{ name: "siliconflow-qwen-2.5-72b", type: "siliconflow", model: "Qwen/Qwen2.5-72B-Instruct" }
   ];
 
   const bigBrainProviders = [
-    { name: "gemini-3.5-flash-lite", type: "google", model: "gemini-3.5-flash-lite", useBackup: false },
-    { name: "gemini-3.5-flash-lite-backup", type: "google", model: "gemini-3.5-flash-lite", useBackup: true },
-    { name: "gemini-3.1-flash-lite", type: "google", model: "gemini-3.5-flash-lite", useBackup: false },
-    { name: "mistral-large", type: "mistral", model: "mistral-large-latest", useBackup: false },
-    { name: "gemma-4-31b-it", type: "google", model: "gemma-4-31b-it", useBackup: false },
-    { name: "gemini-3.6-flash", type: "google", model: "gemini-3.6-flash", useBackup: false },
-    { name: "gemini-3.5-flash-lite-backup", type: "google", model: "gemini-3.5-flash-lite", useBackup: true },
-    { name: "gemma-4-31b-it-backup", type: "google", model: "gemma-4-31b-it", useBackup: true },
-    { name: "gemini-3.6-flash-backup", type: "google", model: "gemini-3.6-flash", useBackup: true },
+    { name: "gemini-3.5-flash-lite", type: "google", model: "gemini-3.5-flash-lite" },
+    { name: "gemini-3.1-flash-lite", type: "google", model: "gemini-3.5-flash-lite" },
+    { name: "mistral-large", type: "mistral", model: "mistral-large-latest" },
+    { name: "gemma-4-31b-it", type: "google", model: "gemma-4-31b-it" },
+    { name: "gemini-3.6-flash", type: "google", model: "gemini-3.6-flash" },
     { name: "ollama-deepseek-v4-pro", type: "ollama", model: "deepseek-v4-pro:0813" },
     { name: "ollama-kimi-k3", type: "ollama", model: "kimi-k3" }
-
   ];
   
   const allProviders = needsBigBrain ? bigBrainProviders : providers;
@@ -322,21 +399,19 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
 
   let errorsForLog = [];
 
-  for (const provider of providersToUse) {
+  const attempts = expandProviderAttempts(providersToUse);
+
+  for (let attemptIndex = 0; attemptIndex < attempts.length; attemptIndex++) {
+    const provider = attempts[attemptIndex];
+    const credential = provider.credential;
+    const providerLabel = describeAttempt(provider);
     // log provider and model regardless of failure so i can know what stupid model the script is calling
- 
+
     const startTime = Date.now();
     try {
-      appLog && appLog.info(`Currently trying: ${provider.name} with model: ${provider.model}`);
+      appLog && appLog.info(`Currently trying: ${providerLabel} with model: ${provider.model}`);
       if (provider.type === "google") {
-        if (provider.useBackup ? !process.env.GEMINI_BACKUP_KEY : !process.env.GEMINI_API_KEY) {
-          continue;
-        }
-
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const aiBackup = new GoogleGenAI({ apiKey: process.env.GEMINI_BACKUP_KEY });
-
-        const client = provider.useBackup && aiBackup ? aiBackup : ai;
+        const client = new GoogleGenAI({ apiKey: credential.apiKey });
 
         let toolList = tools && tools.length > 0 
           ? [{ functionDeclarations: tools }] 
@@ -504,11 +579,7 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
         };
       }
       if (provider.type === "cerebras") {
-        if (!process.env.CEREBRAS_API_KEY) {
-          continue;
-        }
-
-        const aiCerebras = new Cerebras({ apiKey: process.env.CEREBRAS_API_KEY });
+        const aiCerebras = new Cerebras({ apiKey: credential.apiKey });
 
         const messages = convertContentsToMessages(contents);
 
@@ -544,11 +615,7 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
         };
       } 
       if (provider.type === "groq") {
-        if (!process.env.GROQ_API_KEY) {
-          continue;
-        }
-
-        const aiGroq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+        const aiGroq = new Groq({ apiKey: credential.apiKey });
         const messages = convertContentsToMessages(contents);
 
         let toolsParam = undefined;
@@ -626,10 +693,6 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
       }
 
       if (provider.type === "cohere") {
-        if (!process.env.COHERE_API_KEY) {
-          continue;
-        }
-
         // wait 2 seconds because stupid cohere key has more rate limits if more tools stuff idk
         await new Promise(resolve => setTimeout(resolve, 2000));
 
@@ -647,7 +710,7 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
 
         const headers = {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.COHERE_API_KEY}`
+          "Authorization": `Bearer ${credential.apiKey}`
         };
 
         const res = await fetch("https://api.cohere.ai/compatibility/v1/chat/completions", {
@@ -724,10 +787,6 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
       }
 
       if (provider.type === "mistral") {
-        if (!process.env.MISTRAL_API_KEY) {
-          continue;
-        }
-
         const messages = convertContentsToMessages(contents);
         const body = {
           model: provider.model,
@@ -741,7 +800,7 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
 
         const headers = {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.MISTRAL_API_KEY}`
+          "Authorization": `Bearer ${credential.apiKey}`
         };
 
         const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
@@ -817,11 +876,7 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
 
       
       if (provider.type === "openrouter") {
-        if (!process.env.OPENROUTER_API_KEY) {
-          continue;
-        }
-
-        const aiBackupBackup = new OpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
+        const aiBackupBackup = new OpenRouter({ apiKey: credential.apiKey });
         const messages = convertContentsToMessages(contents);
 
         let toolsParam = undefined;
@@ -901,10 +956,6 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
       }
 
       if (provider.type === "hyperbolic") {
-        if (!process.env.HYPERBOLIC_API_KEY) {
-          continue;
-        }
-
         const messages = convertContentsToMessages(contents);
         const body = {
           model: provider.model,
@@ -918,7 +969,7 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
 
         const headers = {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.HYPERBOLIC_API_KEY}`
+          "Authorization": `Bearer ${credential.apiKey}`
         };
 
         const res = await fetch("https://api.hyperbolic.xyz/v1/chat/completions", {
@@ -993,10 +1044,6 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
       }
 
       if (provider.type === "siliconflow") {
-        if (!process.env.SILICONFLOW_API_KEY) {
-          continue;
-        }
-
         const messages = convertContentsToMessages(contents);
         const body = {
           model: provider.model,
@@ -1010,7 +1057,7 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
 
         const headers = {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.SILICONFLOW_API_KEY}`
+          "Authorization": `Bearer ${credential.apiKey}`
         };
 
         const res = await fetch("https://api.siliconflow.cn/v1/chat/completions", {
@@ -1085,10 +1132,6 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
       }
 
       if (provider.type === "novita") {
-        if (!process.env.NOVITA_API_KEY) {
-          continue;
-        }
-
         const messages = convertContentsToMessages(contents);
         const body = {
           model: provider.model,
@@ -1104,7 +1147,7 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
 
         const headers = {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.NOVITA_API_KEY}`
+          "Authorization": `Bearer ${credential.apiKey}`
         };
 
         const res = await fetch("https://api.novita.ai/openai/v1/chat/completions", {
@@ -1180,10 +1223,6 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
       }
 
       if (provider.type === "pollinations") {
-        if (!process.env.POLLINATIONS_API_KEY) {
-          continue;
-        }
-        
         const messages = convertContentsToMessages(contents);
         const body = {
           model: provider.model,
@@ -1198,7 +1237,7 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
         const headers = {
           "Content-Type": "application/json"
         };
-        const pollKey = process.env.POLLINATIONS_API_KEY || "any";
+        const pollKey = credential.apiKey;
         headers["Authorization"] = `Bearer ${pollKey}`;
 
         const res = await fetch("https://gen.pollinations.ai/v1/chat/completions", {
@@ -1274,10 +1313,6 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
       }
 
       if (provider.type === "ollama") {
-        if (!process.env.OLLAMA_API_KEY) {
-          continue;
-        }
-
         const messages = convertContentsToMessages(contents);
         const body = {
           model: provider.model,
@@ -1293,10 +1328,10 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
 
         const headers = {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.OLLAMA_API_KEY}`
+          "Authorization": `Bearer ${credential.apiKey}`
         };
 
-        const res = await fetch(`${ollamaApiBase()}/chat/completions`, {
+        const res = await fetch(`${ollamaApiBase(credential.baseUrl)}/chat/completions`, {
           method: "POST",
           headers,
           body: JSON.stringify(body)
@@ -1370,14 +1405,14 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
 
     } catch (err) {
       if (appLog) {
-        appLog.warn(`Provider ${provider.name} failed. Error: ${err.message}`);
+        appLog.warn(`Provider ${providerLabel} failed. Error: ${err.message}`);
       }
       // This is formatted for direct inclusion.
-      errorsForLog.push(` Provider ${provider.name} failed. Error: ${redactSecrets(err.message)}`); // Paranoia be like...
+      errorsForLog.push(` Provider ${providerLabel} failed. Error: ${redactSecrets(err.message)}`); // Paranoia be like...
 
       if (err.message?.includes("429") || err.message?.includes("RESOURCE_EXHAUSTED")) {
-        const nextProvider = providers[providers.indexOf(provider) + 1];
-        if (provider.type === nextProvider?.type) {
+        const nextAttempt = attempts[attemptIndex + 1];
+        if (provider.type === nextAttempt?.type) {
           // we only want to wait if the next provider is the same type, otherwise it's not like we're spamming the api,
           // meaning we can skip and try the other provider immediately
         await new Promise(resolve => setTimeout(resolve, 5000));
