@@ -392,9 +392,10 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
     { name: "groq-gpt-oss-120b", type: "groq", model: "openai/gpt-oss-120b" },
     { name: "groq-gpt-oss-20b", type: "groq", model: "openai/gpt-oss-20b" },
     { name: "ollama-gpt-oss-120b", type: "ollama", model: "gpt-oss:120b" },
-    { name: "ollama-glm-5.3-flash", type: "ollama", model: "glm-5.3-flash" },
-    { name: "ollama-deepseek-v4-flash", type: "ollama", model: "deepseek-v4-flash:0731" },
-    { name: "ollama-qwen-3.5-397b", type: "ollama", model: "qwen3.5:397b" },
+    { name: "ollama-gpt-oss-20b", type: "ollama", model: "gpt-oss:20b" },
+    { name: "ollama-gemma4-31b", type: "ollama", model: "gemma4:31b" },
+    { name: "ollama-nemotron-3-super", type: "ollama", model: "nemotron-3-super" },
+    { name: "ollama-nemotron-3-nano", type: "ollama", model: "nemotron-3-nano:30b" },
     /*{ name: "openrouter-nemotron-3-super", type: "openrouter", model: "nvidia/nemotron-3-super-120b-a12b:free" },
     { name: "openrouter-qwen-coder", type: "openrouter", model: "qwen/qwen3-coder:free" },
     { name: "openrouter-gemma-4-31b-a4b-it", type: "openrouter", model: "google/gemma-4-31b-it:free" },*/
@@ -412,8 +413,8 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
     { name: "mistral-large", type: "mistral", model: "mistral-large-latest" },
     { name: "gemma-4-31b-it", type: "google", model: "gemma-4-31b-it" },
     { name: "gemini-3.6-flash", type: "google", model: "gemini-3.6-flash" },
-    { name: "ollama-deepseek-v4-pro", type: "ollama", model: "deepseek-v4-pro:0813" },
-    { name: "ollama-kimi-k3", type: "ollama", model: "kimi-k3" }
+    { name: "ollama-nemotron-3-ultra", type: "ollama", model: "nemotron-3-ultra" },
+    { name: "ollama-gpt-oss-120b", type: "ollama", model: "gpt-oss:120b" }
   ];
   
   const allProviders = needsBigBrain ? bigBrainProviders : providers;
