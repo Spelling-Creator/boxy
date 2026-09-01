@@ -30,6 +30,6 @@ For more, check out the [Contributing Guide](CONTRIBUTING.md).
 
 ## License
 
-[GPL-3.0](LICENSE) © 2026 supervoidcoder
+[AGPL-3.0](LICENSE) © 2026 supervoidcoder
 
 This fork contains modifications by the Spelling Creator authors.
