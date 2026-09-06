@@ -134,6 +134,22 @@ describe("the ollama provider", () => {
     assert.deepEqual(JSON.parse(calls[0].init.body).messages.map(m => m.role), ["system", "user"]);
   });
 
+  test("keeps a user turn in the tool loop, where every message is system, assistant or tool", async () => {
+    process.env.OLLAMA_API_KEY = "sk-test";
+    const calls = stubFetch({ choices: [{ message: { content: "hi" }, finish_reason: "stop" }] });
+
+    await callAIWithFallback({
+      contents: [
+        ...HELLO,
+        { role: "model", parts: [{ functionCall: { name: "read_file", args: { path: "a.txt" }, id: "call_1" } }] },
+        { role: "user", parts: [{ functionResponse: { name: "read_file", response: "contents", id: "call_1" } }] }
+      ],
+      tools: []
+    });
+
+    assert.deepEqual(JSON.parse(calls[0].init.body).messages.map(m => m.role), ["user", "assistant", "tool"]);
+  });
+
   test("reports why the response was empty instead of just that it was", async () => {
     process.env.OLLAMA_API_KEY = "sk-test";
     stubFetch({

@@ -1347,7 +1347,7 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
       if (provider.type === "ollama") {
         const messages = convertContentsToMessages(contents);
 
-        if (!messages.some(m => m.role === "user" || m.role === "tool")) {
+        if (!messages.some(m => m.role === "user")) {
           const lead = messages.find(m => m.role === "system");
           if (lead) lead.role = "user";
         }
