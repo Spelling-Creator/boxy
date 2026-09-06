@@ -38,6 +38,23 @@ export function parseAllowlist(env = process.env) {
   return new Set([...DEFAULT_ALLOWLIST, ...configured]);
 }
 
+const DASH_LOOKALIKE = /[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/;
+const INVISIBLE = /[\u00AD\u200B-\u200D\u2060\uFEFF]/;
+
+function normalizeRun(run) {
+  let login = "";
+  const sourceIndex = [];
+
+  for (let i = 0; i < run.length; i++) {
+    const char = run[i];
+    if (INVISIBLE.test(char)) continue;
+    login += DASH_LOOKALIKE.test(char) ? "-" : char;
+    sourceIndex.push(i);
+  }
+
+  return { login, sourceIndex };
+}
+
 function linkableLogin(candidate) {
   const match = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9]))*/.exec(candidate);
   if (!match) return null;
@@ -90,7 +107,11 @@ function isProtected(ranges, index) {
   return ranges.some(([start, end]) => index >= start && index < end);
 }
 
-const MENTION = /(^|[^A-Za-z0-9_@/\\])@([A-Za-z0-9-]+)(\/([A-Za-z0-9._-]{1,100}))?/g;
+const LOOKALIKES = DASH_LOOKALIKE.source.slice(1, -1) + INVISIBLE.source.slice(1, -1);
+const MENTION = new RegExp(
+  `(^|[^A-Za-z0-9_@/\\\\])@([A-Za-z0-9${LOOKALIKES}-]+)(/([A-Za-z0-9._${LOOKALIKES}-]{1,100}))?`,
+  "g"
+);
 
 export function findMentions(text) {
   if (!text || typeof text !== "string") return [];
@@ -102,13 +123,17 @@ export function findMentions(text) {
     const index = match.index + match[1].length;
     if (isProtected(ranges, index)) continue;
 
-    const login = linkableLogin(match[2]);
+    const run = match[2];
+    const { login: intended, sourceIndex } = normalizeRun(run);
+    const login = linkableLogin(intended);
     if (!login) continue;
 
-    const team = login === match[2] ? (match[4] || null) : null;
+    const team = login === intended && match[4] ? normalizeRun(match[4]).login : null;
+    const consumed = sourceIndex[login.length - 1] + 1;
 
     mentions.push({
-      raw: team ? `@${login}/${team}` : `@${login}`,
+      source: `@${run.slice(0, consumed)}${team ? match[3] : ""}`,
+      clean: team ? `@${login}/${team}` : `@${login}`,
       name: login,
       team,
       index,
@@ -169,7 +194,7 @@ export async function guardPings(text, { octokit, owner, repo, log = console, al
   const verdicts = new Map();
 
   for (const mention of mentions) {
-    const key = mention.raw.toLowerCase();
+    const key = mention.clean.toLowerCase();
     if (verdicts.has(key)) continue;
 
     if (mention.team) {
@@ -186,20 +211,33 @@ export async function guardPings(text, { octokit, owner, repo, log = console, al
   }
 
   const blocked = [];
+  const repaired = [];
   let guarded = "";
   let cursor = 0;
 
   for (const mention of mentions) {
-    if (verdicts.get(mention.raw.toLowerCase())) continue;
-    blocked.push(mention.raw);
-    guarded += text.slice(cursor, mention.index) + defuseMention(mention.raw);
-    cursor = mention.index + mention.raw.length;
+    const allowed = verdicts.get(mention.clean.toLowerCase());
+    const replacement = allowed ? mention.clean : defuseMention(mention.clean);
+
+    if (!allowed) blocked.push(mention.clean);
+    else if (replacement !== mention.source) repaired.push(mention.clean);
+
+    if (replacement === mention.source) continue;
+
+    guarded += text.slice(cursor, mention.index) + replacement;
+    cursor = mention.index + mention.source.length;
   }
 
-  if (blocked.length === 0) return text;
+  if (blocked.length === 0 && repaired.length === 0) return text;
 
   guarded += text.slice(cursor);
-  log?.warn?.(`[PING GUARD] Defused ${blocked.length} mention(s) outside ${org || "the org"}: ${blocked.join(", ")}`);
+
+  if (blocked.length > 0) {
+    log?.warn?.(`[PING GUARD] Defused ${blocked.length} mention(s) outside ${org || "the org"}: ${blocked.join(", ")}`);
+  }
+  if (repaired.length > 0) {
+    log?.info?.(`[PING GUARD] Repaired ${repaired.length} mention(s) GitHub would have mis-linked: ${repaired.join(", ")}`);
+  }
 
   return guarded;
 }

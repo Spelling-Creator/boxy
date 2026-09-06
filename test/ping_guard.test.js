@@ -183,6 +183,46 @@ describe("ping guard", () => {
     assert.strictEqual(result, "`@Spelling`--Creator/boxy");
   });
 
+  const NON_BREAKING_HYPHEN = String.fromCharCode(0x2011);
+  const EN_DASH = String.fromCharCode(0x2013);
+  const ZERO_WIDTH_SPACE = String.fromCharCode(0x200B);
+
+  test("repairs a lookalike hyphen so the ping reaches the person it names", async () => {
+    const octokit = fakeOctokit({ members: ["playforge-coding"] });
+
+    assert.strictEqual(
+      await guard(`thanks @playforge${NON_BREAKING_HYPHEN}coding!`, octokit),
+      "thanks @playforge-coding!"
+    );
+    assert.strictEqual(
+      await guard(`thanks @PlayForge${EN_DASH}coding!`, octokit),
+      "thanks @PlayForge-coding!"
+    );
+  });
+
+  test("a lookalike hyphen can't leak a ping to the ascii prefix", async () => {
+    const octokit = fakeOctokit({ members: ["playforge-coding"] });
+    const result = await guard(`cc @outsider${NON_BREAKING_HYPHEN}person`, octokit);
+
+    assert.strictEqual(result, "cc `@outsider-person`");
+  });
+
+  test("drops invisible characters instead of pinging the prefix before them", async () => {
+    const octokit = fakeOctokit({ members: ["playforge-coding"] });
+    const result = await guard(`cc @playforge${ZERO_WIDTH_SPACE}coding`, octokit);
+
+    assert.strictEqual(result, "cc `@playforgecoding`");
+  });
+
+  test("a repaired mention stays put when guarded again", async () => {
+    const octokit = fakeOctokit({ members: ["playforge-coding"] });
+    const once = await guard(`@playforge${NON_BREAKING_HYPHEN}coding ping`, octokit);
+    const twice = await guard(once, octokit);
+
+    assert.strictEqual(once, "@playforge-coding ping");
+    assert.strictEqual(twice, once);
+  });
+
   test("defuses every outside mention in a longer body", async () => {
     const octokit = fakeOctokit({ members: ["ampelc"] });
     const result = await guard(
