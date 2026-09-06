@@ -1346,11 +1346,16 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
 
       if (provider.type === "ollama") {
         const messages = convertContentsToMessages(contents);
+
+        if (!messages.some(m => m.role === "user" || m.role === "tool")) {
+          const lead = messages.find(m => m.role === "system");
+          if (lead) lead.role = "user";
+        }
+
         const body = {
           model: provider.model,
           messages: messages,
           max_tokens: provider.maxTokens || 8192,
-          reasoning_effort: provider.reasoningEffort || "low",
           stream: false
         };
 
@@ -1411,12 +1416,13 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
           parts.push({ text });
         }
 
-        if (functionCalls.length === 0) {
-          if (!text.trim() && choice.finish_reason === "length") {
-            const spent = data.usage?.completion_tokens ?? body.max_tokens;
-            throw new Error(`Ollama provider ${provider.name} hit its ${body.max_tokens} token limit while reasoning (${spent} output tokens, no answer)`);
-          }
-          throwIfEmptyModelResponse(text, `Ollama provider ${provider.name}`);
+        if (functionCalls.length === 0 && !text.trim()) {
+          const detail = [
+            `finish_reason ${choice.finish_reason || "unknown"}`,
+            reasoning ? "reasoning but no answer" : "no content at all",
+            `${data.usage?.completion_tokens ?? 0} output tokens`
+          ].join(", ");
+          throw new Error(`Ollama provider ${provider.name} returned an empty response (${detail})`);
         }
 
         const elapsedSeconds = getElapsedSeconds(startTime);

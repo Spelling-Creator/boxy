@@ -113,25 +113,37 @@ describe("the ollama provider", () => {
     assert.equal(result.candidates[0].finishReason, "STOP");
   });
 
-  test("caps reasoning so a thinking model does not spend the budget on its trace", async () => {
+  test("sends the opening prompt as a user turn, since a system-only chat answers nothing", async () => {
     process.env.OLLAMA_API_KEY = "sk-test";
     const calls = stubFetch({ choices: [{ message: { content: "hi" }, finish_reason: "stop" }] });
 
     await callAIWithFallback({ contents: HELLO, tools: [] });
 
-    assert.equal(JSON.parse(calls[0].init.body).reasoning_effort, "low");
+    assert.deepEqual(JSON.parse(calls[0].init.body).messages, [{ role: "user", content: "hi" }]);
   });
 
-  test("says the budget went to reasoning when a truncated answer comes back empty", async () => {
+  test("leaves the system turn alone once the conversation has a user turn", async () => {
+    process.env.OLLAMA_API_KEY = "sk-test";
+    const calls = stubFetch({ choices: [{ message: { content: "hi" }, finish_reason: "stop" }] });
+
+    await callAIWithFallback({
+      contents: [...HELLO, { role: "user", parts: [{ text: "and now this" }] }],
+      tools: []
+    });
+
+    assert.deepEqual(JSON.parse(calls[0].init.body).messages.map(m => m.role), ["system", "user"]);
+  });
+
+  test("reports why the response was empty instead of just that it was", async () => {
     process.env.OLLAMA_API_KEY = "sk-test";
     stubFetch({
-      choices: [{ message: { content: "", reasoning: "hmm ".repeat(50) }, finish_reason: "length" }],
+      choices: [{ message: { content: "", reasoning: "hmm" }, finish_reason: "length" }],
       usage: { completion_tokens: 8192 }
     });
 
     await assert.rejects(
       callAIWithFallback({ contents: HELLO, tools: [] }),
-      /hit its 8192 token limit while reasoning \(8192 output tokens, no answer\)/
+      /empty response \(finish_reason length, reasoning but no answer, 8192 output tokens\)/
     );
   });
 
