@@ -38,8 +38,10 @@ export function parseAllowlist(env = process.env) {
   return new Set([...DEFAULT_ALLOWLIST, ...configured]);
 }
 
-function isValidLogin(login) {
-  return /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(login);
+function linkableLogin(candidate) {
+  const match = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9]))*/.exec(candidate);
+  if (!match) return null;
+  return match[0].length <= 39 ? match[0] : null;
 }
 
 function pushRange(ranges, start, end) {
@@ -88,7 +90,7 @@ function isProtected(ranges, index) {
   return ranges.some(([start, end]) => index >= start && index < end);
 }
 
-const MENTION = /(^|[^A-Za-z0-9_@/\\-])@([A-Za-z0-9-]{1,39})(\/([A-Za-z0-9._-]{1,100}))?/g;
+const MENTION = /(^|[^A-Za-z0-9_@/\\])@([A-Za-z0-9-]+)(\/([A-Za-z0-9._-]{1,100}))?/g;
 
 export function findMentions(text) {
   if (!text || typeof text !== "string") return [];
@@ -99,12 +101,16 @@ export function findMentions(text) {
   for (const match of text.matchAll(MENTION)) {
     const index = match.index + match[1].length;
     if (isProtected(ranges, index)) continue;
-    if (!isValidLogin(match[2])) continue;
+
+    const login = linkableLogin(match[2]);
+    if (!login) continue;
+
+    const team = login === match[2] ? (match[4] || null) : null;
 
     mentions.push({
-      raw: match[0].slice(match[1].length),
-      name: match[2],
-      team: match[4] || null,
+      raw: team ? `@${login}/${team}` : `@${login}`,
+      name: login,
+      team,
       index,
     });
   }

@@ -151,6 +151,38 @@ describe("ping guard", () => {
     assert.strictEqual(octokit.calls.membership, 1);
   });
 
+  test("reads a hyphenated login in full instead of stopping at the hyphen", async () => {
+    const octokit = fakeOctokit({ members: ["playforge-coding"] });
+
+    assert.deepStrictEqual(
+      findMentions("thanks @PlayForge-coding!").map(m => m.name),
+      ["PlayForge-coding"]
+    );
+    assert.strictEqual(await guard("thanks @PlayForge-coding!", octokit), "thanks @PlayForge-coding!");
+  });
+
+  test("trims a malformed mention to the prefix GitHub would actually link", async () => {
+    const octokit = fakeOctokit({ members: ["playforge-coding"] });
+
+    assert.strictEqual(await guard("@playforge-coding- shipped it", octokit), "@playforge-coding- shipped it");
+    assert.strictEqual(await guard("cc @play--forge", octokit), "cc `@play`--forge");
+    assert.strictEqual(await guard("cc @outsider- please", octokit), "cc `@outsider`- please");
+  });
+
+  test("catches a mention that follows a hyphen", async () => {
+    const octokit = fakeOctokit({ members: ["playforge-coding"] });
+
+    assert.strictEqual(await guard("-@randomstranger", octokit), "-`@randomstranger`");
+    assert.strictEqual(await guard("-@playforge-coding", octokit), "-@playforge-coding");
+  });
+
+  test("a truncated login can't smuggle a team mention past the guard", async () => {
+    const octokit = fakeOctokit();
+    const result = await guard("@Spelling--Creator/boxy", octokit);
+
+    assert.strictEqual(result, "`@Spelling`--Creator/boxy");
+  });
+
   test("defuses every outside mention in a longer body", async () => {
     const octokit = fakeOctokit({ members: ["ampelc"] });
     const result = await guard(
