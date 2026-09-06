@@ -12,3 +12,14 @@ export type Memory = {
 	content: string;
 	timestamp: string | null;
 };
+
+export type Todo = {
+	id: string;
+	title: string;
+	description: string;
+	completed: boolean;
+	sourceRepoOwner: string | null;
+	sourceRepoName: string | null;
+	sourceIssueNumber: number | null;
+	sourceInstallationId: number | null;
+};
