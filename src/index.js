@@ -5,6 +5,7 @@ import { loadNotebook, loadTodoList, loadReviews, loadStickyNotes, REVERT_FILE }
 import { callAIWithFallback } from "./ai.js";
 import { executeTool, boxyWebhookTools, boxyBackgroundTools, prependActivityLog, stripRunDetails } from "./tools.js"; 
 import { triggerCodeReview, handleWorkflowCompleted, handleReviewCommentReply } from './review.js';
+import { guardPings } from "./ping_guard.js";
 const workflowEvents = new EventEmitter();
 
 
@@ -35,7 +36,10 @@ try {
       owner: "Spelling-Creator",
       repo: "boxy",
       commit_sha: brokenSha,
-      body: `@${commitAuthor} Your code on commit ${brokenSha} is broken. I've gone back to commit ${safeSha} so that I didn't die because of your skill issue. Please push a new commit to fix it!`
+      body: await guardPings(
+        `@${commitAuthor} Your code on commit ${brokenSha} is broken. I've gone back to commit ${safeSha} so that I didn't die because of your skill issue. Please push a new commit to fix it!`,
+        { octokit, owner: "Spelling-Creator", repo: "boxy", log: app.log }
+      )
     });
   }
   
@@ -150,6 +154,13 @@ async function listConversationComments(octokit, { owner, repo, isDiscussion, di
 
 async function createCommentForContext(context, body) {
   const repo = context.repo();
+  const guardedBody = await guardPings(body, {
+    octokit: context.octokit,
+    owner: repo.owner,
+    repo: repo.repo,
+    log: context.log || console
+  });
+
   if (context.name === "discussion_comment" || context.name === "discussion") {
     return await replyToDiscussionComment(context.octokit, {
       owner: repo.owner,
@@ -157,7 +168,7 @@ async function createCommentForContext(context, body) {
       discussion_comment_id: context.payload.comment?.id,
       discussion_comment_node_id: context.payload.comment?.node_id,
       discussion_node_id: context.payload.discussion?.node_id || context.payload.comment?.node_id,
-      body
+      body: guardedBody
     });
   }
 
@@ -170,7 +181,7 @@ async function createCommentForContext(context, body) {
     owner: repo.owner,
     repo: repo.repo,
     issue_number: issueNumber,
-    body
+    body: guardedBody
   });
 }
 
@@ -670,6 +681,13 @@ let loopCount = 0;
       }
 
       let responseText = prependActivityLog(response.text, activityLog);
+      responseText = await guardPings(responseText, {
+        octokit: context.octokit,
+        owner: context.repo().owner,
+        repo: context.repo().repo,
+        log: app.log,
+        allow: [author]
+      });
 
       app.log.info(response.text);
 

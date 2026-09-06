@@ -2,6 +2,7 @@ import AdmZip from 'adm-zip';
 import { callAIWithFallback } from './ai.js';
 import { loadReviews, saveReviews, loadNotebook, loadTodoList, loadStickyNotes } from './fs.js';
 import { boxyReviewTools, executeTool, boxyWebhookTools, prependActivityLog, stripRunDetails } from './tools.js';
+import { guardPings } from './ping_guard.js';
 
 export async function triggerCodeReview(context, app) {
   let pr;
@@ -34,7 +35,10 @@ export async function triggerCodeReview(context, app) {
 
   let boxyComment = comments.find(c => c.user.login === "boxy-sc[bot]" && c.body.includes("<!-- BOXY REVIEW COMMENT -->"));
 
-  const commentBody = `# Code Review Started!\nHi, @${author}! I'll get started on reviewing this PR.  Once finished, I'll update this comment with my full review!<!-- BOXY REVIEW COMMENT -->`;
+  const commentBody = await guardPings(
+    `# Code Review Started!\nHi, @${author}! I'll get started on reviewing this PR.  Once finished, I'll update this comment with my full review!<!-- BOXY REVIEW COMMENT -->`,
+    { octokit: context.octokit, owner: context.repo().owner, repo: context.repo().repo, log: app.log, allow: [author] }
+  );
 
   let commentId;
   if (boxyComment) {
@@ -268,7 +272,7 @@ export async function handleReviewCommentReply(context, app) {
       repo,
       pull_number: prNum,
       comment_id: comment.id,
-      body: bodyText
+      body: await guardPings(bodyText, { octokit: context.octokit, owner, repo, log: app.log, allow: [author] })
     });
   };
 

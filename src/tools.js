@@ -5,6 +5,7 @@ import { runCommandInBoxyContainer, sendStdinToBoxyContainer, waitCommandInBoxyC
 import { executeSafely, redactSecrets } from "./safety_filter.js";
 import { buildRunDetailsBlock, insertRunDetailsSection, stripRunDetailsBlock } from "./comment_format.js";
 import { can, describeDenial } from "./permissions.js";
+import { guardPings } from "./ping_guard.js";
 import { fetchUrl } from "./fetch_url.js";
 import { hasFirecrawl, firecrawlSearch } from "./firecrawl.js";
 
@@ -557,6 +558,12 @@ export async function executeTool(call, context, app, activityLog, authorRole = 
   let toolResult = {};
   const { owner, repo } = context.repo();
   const repoKey = `${owner}/${repo}`;
+  const guardBody = (body, target = {}) => guardPings(body, {
+    octokit: context.octokit,
+    owner: target.owner || owner,
+    repo: target.repo || repo,
+    log: app?.log || console
+  });
 
   try {
     if (call.name === "read_memory") {
@@ -715,7 +722,7 @@ export async function executeTool(call, context, app, activityLog, authorRole = 
       const { data } = await context.octokit.rest.issues.createComment({
         owner, repo,
         issue_number: call.args.issue_number,
-        body: call.args.body
+        body: await guardBody(call.args.body)
       });
       toolResult = { status: "success", comment_url: data.html_url };
     }
@@ -837,7 +844,7 @@ export async function executeTool(call, context, app, activityLog, authorRole = 
 
       try {
         const { data } = await context.octokit.rest.pulls.create({
-          owner, repo, title, head, base, body, draft: !!draft
+          owner, repo, title, head, base, body: await guardBody(body), draft: !!draft
         });
         app.log.info(`Boxy opened PR #${data.number} on ${owner}/${repo}: ${data.html_url}`);
         toolResult = {
@@ -868,7 +875,7 @@ export async function executeTool(call, context, app, activityLog, authorRole = 
             owner: targetOwner,
             repo: targetRepo,
             title,
-            body,
+            body: await guardBody(body, { owner: targetOwner, repo: targetRepo }),
             ...(Array.isArray(labels) && labels.length > 0 ? { labels } : {})
           });
           app.log.info(`Boxy filed issue #${data.number} on ${targetOwner}/${targetRepo}: ${data.html_url}`);
@@ -903,7 +910,7 @@ export async function executeTool(call, context, app, activityLog, authorRole = 
     }
   
     else if (call.name === "update_pr_summary") {
-      let commentBody = "<!-- BOXY REVIEW COMMENT -->\n" + call.args.body;
+      let commentBody = "<!-- BOXY REVIEW COMMENT -->\n" + await guardBody(call.args.body);
       await context.octokit.rest.issues.updateComment({ owner, repo, comment_id: call.args.comment_id, body: commentBody });
       toolResult = { status: "success" };
     }
@@ -914,7 +921,7 @@ export async function executeTool(call, context, app, activityLog, authorRole = 
         path: call.args.path,
         line: call.args.line,
         side: "RIGHT",
-        body: call.args.body
+        body: await guardBody(call.args.body)
       };
 
       if (call.args.start_line && call.args.start_line < call.args.line) {
@@ -943,7 +950,7 @@ export async function executeTool(call, context, app, activityLog, authorRole = 
         repo,
         pull_number: call.args.pull_number,
         event: call.args.event,
-        body: call.args.body,
+        body: await guardBody(call.args.body),
         comments: draftComments
       });
 
