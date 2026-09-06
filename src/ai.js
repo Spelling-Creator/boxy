@@ -1350,6 +1350,7 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
           model: provider.model,
           messages: messages,
           max_tokens: provider.maxTokens || 8192,
+          reasoning_effort: provider.reasoningEffort || "low",
           stream: false
         };
 
@@ -1411,6 +1412,10 @@ export async function callAIWithFallback({ contents, tools, appLog, needsBigBrai
         }
 
         if (functionCalls.length === 0) {
+          if (!text.trim() && choice.finish_reason === "length") {
+            const spent = data.usage?.completion_tokens ?? body.max_tokens;
+            throw new Error(`Ollama provider ${provider.name} hit its ${body.max_tokens} token limit while reasoning (${spent} output tokens, no answer)`);
+          }
           throwIfEmptyModelResponse(text, `Ollama provider ${provider.name}`);
         }
 

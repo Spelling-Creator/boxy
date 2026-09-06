@@ -113,6 +113,28 @@ describe("the ollama provider", () => {
     assert.equal(result.candidates[0].finishReason, "STOP");
   });
 
+  test("caps reasoning so a thinking model does not spend the budget on its trace", async () => {
+    process.env.OLLAMA_API_KEY = "sk-test";
+    const calls = stubFetch({ choices: [{ message: { content: "hi" }, finish_reason: "stop" }] });
+
+    await callAIWithFallback({ contents: HELLO, tools: [] });
+
+    assert.equal(JSON.parse(calls[0].init.body).reasoning_effort, "low");
+  });
+
+  test("says the budget went to reasoning when a truncated answer comes back empty", async () => {
+    process.env.OLLAMA_API_KEY = "sk-test";
+    stubFetch({
+      choices: [{ message: { content: "", reasoning: "hmm ".repeat(50) }, finish_reason: "length" }],
+      usage: { completion_tokens: 8192 }
+    });
+
+    await assert.rejects(
+      callAIWithFallback({ contents: HELLO, tools: [] }),
+      /hit its 8192 token limit while reasoning \(8192 output tokens, no answer\)/
+    );
+  });
+
   test("moves a thinking model's reasoning into the details block", async () => {
     process.env.OLLAMA_API_KEY = "sk-test";
     stubFetch({
